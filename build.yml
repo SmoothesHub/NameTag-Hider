@@ -1,0 +1,61 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Check for game references
+        shell: pwsh
+        run: |
+          $required = @(
+            "libs/BepInEx.dll",
+            "libs/Assembly-CSharp.dll",
+            "libs/UnityEngine.dll",
+            "libs/UnityEngine.CoreModule.dll",
+            "libs/UnityEngine.IMGUIModule.dll",
+            "libs/UnityEngine.InputLegacyModule.dll",
+            "libs/UnityEngine.UI.dll"
+          )
+
+          $missing = $required | Where-Object { -not (Test-Path $_) }
+
+          if ($missing.Count -gt 0) {
+            Write-Host ""
+            Write-Host "Missing local Gorilla Tag references:"
+            $missing | ForEach-Object { Write-Host " - $_" }
+            Write-Host ""
+            Write-Host "These DLLs are intentionally gitignored and should not be committed."
+            Write-Host "For public GitHub builds, provide them through a private artifact/cache or build locally."
+            exit 1
+          }
+
+      - name: Build
+        run: dotnet build NameTag-Hider.csproj -c Release --no-restore
+
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item "bin/Release/NameTag-Hider.dll" "artifacts/NameTag-Hider.dll"
+
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: NameTag-Hider
+          path: artifacts/NameTag-Hider.dll
